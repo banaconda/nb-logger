@@ -61,11 +61,11 @@ type BasicLogger struct {
 }
 
 var levelStringMap = map[int]string{
-	Trace: "TRACE",
-	Debug: "DEBUG",
-	Info:  "INFO",
-	Warn:  "WARN",
-	Error: "ERROR",
+	Trace: "[TRACE] ",
+	Debug: "[DEBUG] ",
+	Info:  "[INFO]  ",
+	Warn:  "[WARN]  ",
+	Error: "[ERROR] ",
 }
 
 func init() {
@@ -74,6 +74,7 @@ func init() {
 func NewLogger(path string, level int, bufferSize int, flags int) (Logger, error) {
 	logFile, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
+		fmt.Printf("err: %v", err)
 		return nil, errors.New("file creation fail")
 	}
 
@@ -177,7 +178,7 @@ func (logger *BasicLogger) formatHeader(buf *[]byte, level int, t time.Time, fil
 }
 
 func (logger *BasicLogger) logging(level int, format string, v ...any) {
-	if logger.level < level {
+	if logger.level > level {
 		return
 	}
 
