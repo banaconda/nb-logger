@@ -11,11 +11,58 @@ import (
 	"golang.org/x/exp/constraints"
 )
 
-var LogFilePath = "/mnt/test.log"
+var LogFilePath = "test.log"
 var bufferSize = 100000
 
 func init() {
 	runtime.GOMAXPROCS(16)
+}
+
+func logging(logger Logger){
+	logger.Trace("")
+	logger.Debug("")
+	logger.Info("")
+	logger.Warn("")
+	logger.Error("")
+}
+
+func TestLogLevelDefault(t *testing.T) {
+	fmt.Printf("Info Level Test\n")
+	logger, err := NewLogger(LogFilePath, Info, bufferSize, Lshortfile|LstdFlags|Lmicroseconds|Lstdout)
+	if err != nil{
+		t.Fatalf("%v", err)
+	}
+	defer logger.Close()
+
+	logging(logger)
+
+	os.Remove(LogFilePath)
+}
+
+func TestLogLevelTrace(t *testing.T) {
+	fmt.Printf("Trace Level Test\n")
+	logger, err := NewLogger(LogFilePath, Trace, bufferSize, Lshortfile|LstdFlags|Lmicroseconds|Lstdout)
+	if err != nil{
+		t.Fatalf("%v", err)
+	}
+	defer logger.Close()
+
+	logging(logger)
+
+	os.Remove(LogFilePath)
+}
+
+func TestLogLevelError(t *testing.T) {
+	fmt.Printf("Error Level Test\n")
+	logger, err := NewLogger(LogFilePath, Error, bufferSize, Lshortfile|LstdFlags|Lmicroseconds|Lstdout)
+	if err != nil{
+		t.Fatalf("%v", err)
+	}
+	defer logger.Close()
+
+	logging(logger)
+
+	os.Remove(LogFilePath)
 }
 
 func minMaxAvg[T constraints.Integer](array []T) (T, T, T) {
