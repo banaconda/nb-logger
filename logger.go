@@ -8,6 +8,8 @@ import (
 	"runtime"
 	"sync"
 	"time"
+
+	"github.com/alphadose/zenq/v2"
 )
 
 type Logger interface {
@@ -47,17 +49,21 @@ const (
 )
 
 type logMessage struct {
-	cmd int
-	buf []byte
+	cmd    int
+	header []byte
+	format string
+	v      []any
 }
 
 type BasicLogger struct {
-	level  int
-	flags  int
-	writer io.Writer
-	ch     chan logMessage
-	lock   sync.Mutex
-	wg     sync.WaitGroup
+	level          int
+	flags          int
+	writer         io.Writer
+	zq             *zenq.ZenQ[logMessage]
+	logIndex       int
+	logMessagePool int
+	lock           sync.Mutex
+	wg             sync.WaitGroup
 }
 
 var levelStringMap = map[int]string{
@@ -89,7 +95,7 @@ func NewLogger(path string, level int, bufferSize int, flags int) (Logger, error
 		level:  level,
 		flags:  flags,
 		writer: writer,
-		ch:     make(chan logMessage, bufferSize),
+		zq:     zenq.New[logMessage](uint32(bufferSize)),
 		lock:   sync.Mutex{},
 		wg:     sync.WaitGroup{},
 	}
@@ -100,17 +106,6 @@ func NewLogger(path string, level int, bufferSize int, flags int) (Logger, error
 	}
 
 	return logger, nil
-}
-
-func (logger *BasicLogger) server() {
-	defer logger.wg.Done()
-	for {
-		if message, err := <-logger.ch; err && message.cmd == write {
-			logger.writer.Write(message.buf)
-		} else {
-			break
-		}
-	}
 }
 
 func itoa(buf *[]byte, i int, wid int) {
@@ -199,23 +194,42 @@ func (logger *BasicLogger) logging(level int, format string, v ...any) {
 		logger.lock.Lock()
 	}
 
-	s := fmt.Sprintf(format, v...)
-	var buf []byte
-	logger.formatHeader(&buf, level, now, file, line)
-	buf = append(buf, s...)
-	if len(s) == 0 || s[len(s)-1] != '\n' {
-		buf = append(buf, '\n')
-	}
+	var header []byte
+	logger.formatHeader(&header, level, now, file, line)
 
 	if logger.flags&Lblocking == 0 {
 		message := logMessage{
-			cmd: write,
-			buf: buf,
+			cmd:    write,
+			header: header,
+			format: format,
+			v:      v,
 		}
 
-		logger.ch <- message
+		logger.zq.Write(message)
 	} else {
-		logger.writer.Write(buf)
+		s := fmt.Sprintf(format, v...)
+		header = append(header, s...)
+		if len(s) == 0 || s[len(s)-1] != '\n' {
+			header = append(header, '\n')
+		}
+		logger.writer.Write(header)
+	}
+}
+
+func (logger *BasicLogger) server() {
+	defer logger.wg.Done()
+	for {
+		if message, err := logger.zq.Read(); err && message.cmd == write {
+			s := fmt.Sprintf(message.format, message.v...)
+			buf := message.header
+			buf = append(buf, s...)
+			if len(s) == 0 || s[len(s)-1] != '\n' {
+				buf = append(buf, '\n')
+			}
+			logger.writer.Write(buf)
+		} else {
+			break
+		}
 	}
 }
 
@@ -242,6 +256,6 @@ func (logger *BasicLogger) GetLogLevel() int {
 }
 
 func (logger *BasicLogger) Close() {
-	logger.ch <- logMessage{cmd: exit}
+	logger.zq.Write(logMessage{cmd: exit})
 	logger.wg.Wait()
 }
